@@ -1,19 +1,27 @@
+// --- Configuration & State ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const audioPlayer = document.getElementById('audio-player');
+const startBtn = document.getElementById('start-btn');
+const uploadInput = document.getElementById('audio-upload');
 const scoreEl = document.getElementById('score');
 const comboEl = document.getElementById('combo');
 const highscoreEl = document.getElementById('highscore');
 const judgementEl = document.getElementById('judgement');
-const audioPlayer = document.getElementById('audio-player');
-const startBtn = document.getElementById('start-btn');
-const uploadInput = document.getElementById('audio-upload');
 
 let isPlaying = false;
 let score = 0;
 let combo = 0;
+let totalHits = 0; // Tracks every "Perfect" or "Good" hit for scaling
 let notes = [];
-let noteSpeed = 7; 
+let noteSpeed = 8; 
 let lastSpawnTime = 0;
+
+// Difficulty Scaling Variables
+const baseSpawnInterval = 250;
+let currentSpawnInterval = baseSpawnInterval;
+
+// Local Storage for High Score
 let highScore = localStorage.getItem('cvnmHighScore') || 0;
 highscoreEl.innerText = highScore;
 
@@ -23,31 +31,28 @@ const hitLineY = 500;
 
 let audioContext, analyser, dataArray, source;
 
-// Enhanced File Upload Logic
+// --- 1. File Handling (The Mac Fix) ---
 uploadInput.addEventListener('change', function(e) {
     const file = this.files[0];
-    if (file) {
-        startBtn.innerText = "Loading Audio...";
-        startBtn.disabled = true;
+    if (!file) return;
 
-        const objectURL = URL.createObjectURL(file);
-        audioPlayer.src = objectURL;
+    startBtn.innerText = "Reading File...";
+    startBtn.disabled = true;
 
-        // Ensure the browser has loaded the MP3 before allowing play
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        audioPlayer.src = event.target.result;
+        audioPlayer.load();
         audioPlayer.oncanplaythrough = () => {
             startBtn.disabled = false;
-            startBtn.innerText = "Play: " + file.name.substring(0, 15) + "...";
-            console.log("File ready:", file.name);
+            startBtn.innerText = "Start Game";
         };
-
-        audioPlayer.onerror = () => {
-            startBtn.innerText = "Invalid File";
-            console.error("The browser could not play this file.");
-        };
-    }
+    };
+    reader.readAsDataURL(file);
 });
 
-startBtn.addEventListener('click', () => {
+// --- 2. Audio Initialization ---
+async function initAudio() {
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
@@ -57,38 +62,24 @@ startBtn.addEventListener('click', () => {
         analyser.connect(audioContext.destination);
         dataArray = new Uint8Array(analyser.frequencyBinCount);
     }
-    
-    if (audioContext.state === 'suspended') audioContext.resume();
+    if (audioContext.state === 'suspended') await audioContext.resume();
+}
 
+startBtn.addEventListener('click', async () => {
+    await initAudio();
     score = 0;
     combo = 0;
+    totalHits = 0;
+    currentSpawnInterval = baseSpawnInterval; // Reset difficulty
     notes = [];
     updateScore();
     judgementEl.innerText = "";
-    
     audioPlayer.play();
     isPlaying = true;
     requestAnimationFrame(gameLoop);
 });
 
-// The Beat Detection Algorithm
-function spawnNotes(timestamp) {
-    analyser.getByteFrequencyData(dataArray);
-    
-    // Analyzing low-end frequencies for the "Gigolo" beat spikes
-    let bassSum = 0;
-    for (let i = 0; i < 5; i++) { bassSum += dataArray[i]; }
-    let bassAvg = bassSum / 5;
-
-    // Adjust the 190 value below if the map is too crowded or too empty
-    if (bassAvg > 190 && timestamp - lastSpawnTime > 220) {
-        const randomLane = Math.floor(Math.random() * 4);
-        notes.push({ lane: randomLane, y: -20 });
-        lastSpawnTime = timestamp;
-    }
-}
-
-// Input Handling
+// --- 3. Input Handling & Difficulty Scaling ---
 window.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
     if (keyMap[key] !== undefined && !activeKeys[keyMap[key]]) {
@@ -109,15 +100,24 @@ function handleHit(lane) {
     const targetNote = laneNotes[0];
     const distance = Math.abs(targetNote.y - hitLineY);
 
-    if (distance <= 30) {
-        score += 300;
+    if (distance <= 70) {
+        totalHits++; // Increment total hits for difficulty scaling
         combo++;
-        showJudgement("PERFECT", "#ff007f");
-        removeNote(targetNote);
-    } else if (distance <= 60) {
-        score += 100;
-        combo++;
-        showJudgement("GOOD", "#ff66b2");
+        
+        if (distance <= 35) {
+            score += 300;
+            showJudgement("PERFECT", "#ff007f");
+        } else {
+            score += 100;
+            showJudgement("GOOD", "#ff66b2");
+        }
+
+        // SCALING LOGIC: Every 20 hits, reduce spawn interval by 25ms
+        if (totalHits % 20 === 0) {
+            currentSpawnInterval = Math.max(80, currentSpawnInterval - 25); // Cap at 80ms so it stays playable
+            showJudgement("SPEED UP!!", "#00ffcc");
+        }
+
         removeNote(targetNote);
     }
     updateScore();
@@ -142,26 +142,48 @@ function updateScore() {
     }
 }
 
+// --- 4. Beat Detection with Dynamic Scaling ---
+function spawnNotes(timestamp) {
+    analyser.getByteFrequencyData(dataArray);
+    let bassAvg = (dataArray[0] + dataArray[1] + dataArray[2]) / 3;
+
+    // Uses currentSpawnInterval instead of a static number
+    if (bassAvg > 200 && timestamp - lastSpawnTime > currentSpawnInterval) {
+        notes.push({ lane: Math.floor(Math.random() * 4), y: -20 });
+        lastSpawnTime = timestamp;
+    }
+}
+
+// --- 5. The Main Loop ---
 function gameLoop(timestamp) {
     if (!isPlaying) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Render logic (Lanes/Notes)
-    ctx.fillStyle = "#333";
-    ctx.fillRect(0, hitLineY, canvas.width, 2);
+    // Draw Hit Line
+    ctx.fillStyle = "#444";
+    ctx.fillRect(0, hitLineY, canvas.width, 4);
 
+    // Draw Lanes
     for (let i = 0; i < 4; i++) {
+        ctx.strokeStyle = "#222";
+        ctx.strokeRect(i * 100, 0, 100, canvas.height);
         if (activeKeys[i]) {
-            ctx.fillStyle = "rgba(255, 0, 127, 0.3)";
+            ctx.fillStyle = "rgba(255, 0, 127, 0.4)";
             ctx.fillRect(i * 100, 0, 100, canvas.height);
         }
     }
 
+    // Move & Draw Notes
     for (let i = notes.length - 1; i >= 0; i--) {
         let note = notes[i];
         note.y += noteSpeed;
+
         ctx.fillStyle = "#ff007f";
-        ctx.fillRect(note.lane * 100 + 5, note.y, 90, 20);
+        ctx.fillRect(note.lane * 100 + 5, note.y, 90, 25);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(note.lane * 100 + 5, note.y + 20, 90, 5);
 
         if (note.y > canvas.height) {
             combo = 0;
