@@ -1,33 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TK's Rhythm Drop</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVNM Local Rhythm Game</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="container">
-    <h1>Rhythm Drop</h1>
-    <div id="game">
-      <div class="lane" data-key="c"><div class="receptor"></div></div>
-      <div class="lane" data-key="v"><div class="receptor"></div></div>
-      <div class="lane" data-key="n"><div class="receptor"></div></div>
-      <div class="lane" data-key="m"><div class="receptor"></div></div>
-    </div>
-    
-    <div id="info">
-      <input type="file" id="audioFile" accept="audio/*" />
-      <button id="loadBtn">Load Audio & Generate Map</button>
-      <button id="playBtn" disabled>Play</button>
-      <div id="score">Score: 0</div>
-      <div id="judgement"></div>
-    </div>
-    
-    <div id="layout">CVNM layout</div>
-  </div>
+    <div class="container">
+        <h1>CVNM Rhythm Game</h1>
+        
+        <div class="controls">
+            <input type="file" id="audio-upload" accept="audio/*">
+            <button id="start-btn" disabled>Play Track</button>
+        </div>
 
-  <audio id="track" crossorigin="anonymous"></audio>
-  <script src="script.js"></script>
+        <div class="stats">
+            <div>Score: <span id="score">0</span></div>
+            <div>Combo: <span id="combo">0</span></div>
+            <div>High Score: <span id="highscore">0</span></div>
+        </div>
+        <div id="judgement"></div>
+
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        
+        <div class="key-hints">
+            <span>C</span>
+            <span>V</span>
+            <span>N</span>
+            <span>M</span>
+        </div>
+
+        <audio id="audio-player"></audio>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
