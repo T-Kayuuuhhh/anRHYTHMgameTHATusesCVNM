@@ -1,170 +1,174 @@
+const game = document.getElementById('game');
 const lanes = document.querySelectorAll('.lane');
-const audioElement = document.getElementById('audio');
-const audioFileInput = document.getElementById('audioFile');
-const audioUrlInput = document.getElementById('audioUrl');
+const track = document.getElementById('track');
 const loadBtn = document.getElementById('loadBtn');
-const startBtn = document.getElementById('startBtn');
-const scoreElement = document.getElementById('score');
-const layoutElement = document.getElementById('layout');
+const playBtn = document.getElementById('playBtn');
+const scoreEl = document.getElementById('score');
+const judgeEl = document.getElementById('judgement');
+const fileInput = document.getElementById('audioFile');
+const layout = document.getElementById('layout');
 
-let audioContext;
-let analyser;
-let source;
 let notes = [];
 let score = 0;
-let isPlaying = false;
+let gameRunning = false;
+let audioCtx;
 let startTime;
-let audioBuffer;
-let beatTimes = [];
+let songDuration;
 
-// Simple onset detection function
-async function detectBeats(buffer) {
-    const offlineContext = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
-    const offlineSource = offlineContext.createBufferSource();
-    offlineSource.buffer = buffer;
-    const lowpass = offlineContext.createBiquadFilter();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.value = 150;
-    offlineSource.connect(lowpass);
-    lowpass.connect(offlineContext.destination);
-    offlineSource.start(0);
-    await offlineContext.startRendering();
-    
-    const channelData = buffer.getChannelData(0);
-    const frameSize = 1024;
-    const beats = [];
-    let prevEnergy = 0;
-    for (let i = 0; i < channelData.length; i += frameSize) {
-        let energy = 0;
-        for (let j = 0; j < frameSize; j++) {
-            if (i + j < channelData.length) {
-                energy += channelData[i + j] ** 2;
-            }
-        }
-        energy = Math.sqrt(energy / frameSize);
-        if (energy > 0.1 && energy > prevEnergy * 1.2) { // Simple threshold and peak detection
-            beats.push(i / buffer.sampleRate);
-        }
-        prevEnergy = energy;
+const keyToLane = { 'c': 0, 'v': 1, 'n': 2, 'm': 3 };
+
+// Simple energy-based beat detection
+async function findBeats(buffer) {
+  const offline = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
+  const src = offline.createBufferSource();
+  src.buffer = buffer;
+  const filter = offline.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 150;
+  src.connect(filter).connect(offline.destination);
+  src.start(0);
+  const rendered = await offline.startRendering();
+  const data = rendered.getChannelData(0);
+
+  const beats = [];
+  let lastBeat = -1;
+  const threshold = 0.08;
+  const minGap = 0.25; // seconds
+
+  for (let i = 0; i < data.length; i += 512) {
+    let energy = 0;
+    for (let j = 0; j < 512; j++) {
+      if (i+j < data.length) energy += data[i+j]**2;
     }
-    return beats;
-}
+    energy = Math.sqrt(energy / 512);
 
-// Generate notes from beat times
-function generateMap(beats) {
-    notes = [];
-    beats.forEach(time => {
-        const laneIndex = Math.floor(Math.random() * 4);
-        notes.push({ time, lane: laneIndex, hit: false });
-    });
-}
-
-// Load audio and generate map
-async function loadAudio() {
-    let url;
-    if (audioFileInput.files.length > 0) {
-        url = URL.createObjectURL(audioFileInput.files[0]);
-    } else if (audioUrlInput.value) {
-        url = audioUrlInput.value;
-    } else {
-        alert('Provide an audio file or URL!');
-        return;
+    const time = i / buffer.sampleRate;
+    if (energy > threshold && time - lastBeat > minGap) {
+      beats.push(time);
+      lastBeat = time;
     }
-    
-    audioElement.src = url;
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    audioContext = new AudioContext();
-    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    beatTimes = await detectBeats(audioBuffer);
-    generateMap(beatTimes);
-    startBtn.disabled = false;
-    alert(`Map generated with ${notes.length} notes!`);
+  }
+  return beats;
 }
 
-// Start game
-function startGame() {
-    if (isPlaying) return;
-    isPlaying = true;
-    layoutElement.style.display = 'block';
-    score = 0;
-    scoreElement.textContent = `Score: ${score}`;
-    audioElement.currentTime = 0;
-    audioElement.play();
-    startTime = performance.now() - audioElement.currentTime * 1000;
-    requestAnimationFrame(update);
+async function loadAndMap() {
+  if (!fileInput.files[0]) return alert("Pick an audio file first!");
+  
+  const file = fileInput.files[0];
+  const url = URL.createObjectURL(file);
+  track.src = url;
+
+  track.onloadedmetadata = () => {
+    songDuration = track.duration;
+    playBtn.disabled = false;
+  };
+
+  // Decode for beat detection
+  const arrayBuf = await file.arrayBuffer();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+  const beatTimes = await findBeats(audioBuf);
+
+  notes = beatTimes.map(t => ({
+    time: t,
+    lane: Math.floor(Math.random() * 4),
+    hit: false,
+    element: null
+  }));
+
+  alert(`Map ready! ${notes.length} notes detected. Hit Play!`);
 }
 
-// Update loop for notes
+function spawnNote(note) {
+  const el = document.createElement('div');
+  el.classList.add('note');
+  lanes[note.lane].appendChild(el);
+  note.element = el;
+}
+
 function update() {
-    if (!isPlaying) return;
-    const currentTime = (performance.now() - startTime) / 1000;
-    
-    notes.forEach(note => {
-        if (!note.element && currentTime > note.time - 2) { // 2s fall time
-            const noteElem = document.createElement('div');
-            noteElem.classList.add('note');
-            lanes[note.lane].appendChild(noteElem);
-            note.element = noteElem;
+  if (!gameRunning) return;
+
+  const now = track.currentTime;
+
+  notes.forEach(note => {
+    if (note.element) {
+      const progress = (now - (note.time - 2)) / 2; // fall over 2s
+      if (progress >= 1) {
+        if (!note.hit) {
+          note.element.classList.add('miss');
+          judgeEl.textContent = 'MISS';
+          setTimeout(() => judgeEl.textContent = '', 800);
         }
-        if (note.element) {
-            const pos = (currentTime - (note.time - 2)) / 2 * 100; // Percent fallen
-            if (pos > 100) {
-                note.element.remove();
-                if (!note.hit) {
-                    // Miss
-                }
-            } else {
-                note.element.style.top = `${pos}%`;
-            }
-        }
-    });
-    
-    if (currentTime >= audioBuffer.duration) {
-        endGame();
-    } else {
-        requestAnimationFrame(update);
+        setTimeout(() => note.element?.remove(), 400);
+        note.element = null;
+      } else {
+        note.element.style.transform = `translateY(${progress * 100}%)`;
+      }
+    } else if (now >= note.time - 2 && now < note.time + 0.5) {
+      spawnNote(note);
     }
+  });
+
+  if (now >= songDuration + 1) {
+    gameRunning = false;
+    layout.style.display = 'none';
+    alert(`Song over! Score: ${score}`);
+  } else {
+    requestAnimationFrame(update);
+  }
 }
 
-function endGame() {
-    isPlaying = false;
-    layoutElement.style.display = 'none';
-    notes.forEach(note => {
-        if (note.element) note.element.remove();
-    });
-    alert(`Game over! Final score: ${score}`);
+function start() {
+  if (gameRunning) return;
+  gameRunning = true;
+  layout.style.display = 'block';
+  score = 0;
+  scoreEl.textContent = 'Score: 0';
+  judgeEl.textContent = '';
+  track.currentTime = 0;
+  track.play().catch(e => console.log("Play failed:", e));
+  startTime = performance.now();
+  requestAnimationFrame(update);
 }
 
-// Key press handling
-document.addEventListener('keydown', (e) => {
-    if (!isPlaying) return;
-    const key = e.key.toLowerCase();
-    const laneMap = { c: 0, v: 1, n: 2, m: 3 };
-    const laneIndex = laneMap[key];
-    if (laneIndex === undefined) return;
-    
-    const currentTime = (performance.now() - startTime) / 1000;
-    notes.forEach(note => {
-        if (!note.hit && note.lane === laneIndex) {
-            const hitDiff = Math.abs(currentTime - note.time);
-            if (hitDiff < 0.2) { // 200ms window
-                score += 100;
-                scoreElement.textContent = `Score: ${score}`;
-                note.hit = true;
-                note.element.style.backgroundColor = '#0f0'; // Hit color
-                setTimeout(() => note.element.remove(), 100);
-            }
-        }
-    });
+document.addEventListener('keydown', e => {
+  if (!gameRunning) return;
+  const k = e.key.toLowerCase();
+  if (!(k in keyToLane)) return;
+
+  const laneIdx = keyToLane[k];
+  const now = track.currentTime;
+
+  // Find closest unhit note in this lane
+  let best = null;
+  let bestDiff = Infinity;
+
+  notes.forEach(note => {
+    if (note.lane === laneIdx && !note.hit && note.element) {
+      const diff = Math.abs(note.time - now);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = note;
+      }
+    }
+  });
+
+  if (best && bestDiff < 0.18) { // timing window
+    best.hit = true;
+    best.element.classList.add('hit');
+    score += Math.round(100 * (1 - bestDiff / 0.18));
+    scoreEl.textContent = `Score: ${score}`;
+
+    let judge = bestDiff < 0.05 ? 'PERFECT' : bestDiff < 0.10 ? 'GREAT' : 'GOOD';
+    judgeEl.textContent = judge;
+    judgeEl.style.color = judge === 'PERFECT' ? '#0f0' : judge === 'GREAT' ? '#ff0' : '#0ff';
+    setTimeout(() => judgeEl.textContent = '', 900);
+
+    setTimeout(() => best.element?.remove(), 150);
+    best.element = null;
+  }
 });
 
-loadBtn.addEventListener('click', loadAudio);
-startBtn.addEventListener('click', startGame);
-
-// Add hit zones visually
-lanes.forEach(lane => {
-    const hitZone = document.createElement('div');
-    hitZone.classList.add('hit-zone');
-    lane.appendChild(hitZone);
-});
+loadBtn.onclick = loadAndMap;
+playBtn.onclick = start;
