@@ -1,0 +1,119 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #111;
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+h1 {
+    color: #ff007f;
+    text-shadow: 0 0 10px #ff007f;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+input[type="file"] {
+    background: #222;
+    padding: 8px;
+    border-radius: 5px;
+    color: #fff;
+}
+
+.controls button {
+    padding: 10px 20px;
+    background-color: #ff007f;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.controls button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+.controls button:hover:not(:disabled) {
+    background-color: #cc0066;
+}
+
+.stats {
+    display: flex;
+    gap: 20px;
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+#judgement {
+    color: #ffcc00;
+    font-style: italic;
+    font-size: 1.5rem;
+    font-weight: bold;
+    height: 30px;
+    text-align: center;
+}
+
+canvas {
+    background-color: #000;
+    border: 2px solid #333;
+    border-radius: 5px;
+    box-shadow: 0 0 20px rgba(255, 0, 127, 0.2);
+}
+
+.key-hints {
+    display: flex;
+    width: 400px;
+    justify-content: space-around;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #555;
+}  padding: 10px 20px;
+  font-size: 1rem;
+  background: #1a0033;
+  color: #0ff;
+  border: 2px solid #0ff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#score { font-size: 1.6rem; text-shadow: 0 0 10px #0ff; }
+#judgement {
+  font-size: 2.5rem;
+  font-weight: bold;
+  min-height: 50px;
+  text-shadow: 0 0 15px currentColor;
+}
+
+#layout {
+  position: fixed;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.3rem;
+  color: #888;
+  text-shadow: 0 0 5px #0ff;
+}
